@@ -50,10 +50,6 @@ type customDNSProviderSolver struct {
 	// 4. ensure your webhook's service account has the required RBAC role
 	//    assigned to it for interacting with the Kubernetes APIs you need.
 	client *kubernetes.Clientset
-
-	// sacloud api
-	dnsOp   *sacloud.DNSOp
-	apiZone *string
 }
 
 // customDNSProviderConfig is a structure that is used to decode into when
@@ -103,8 +99,14 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 	entry, domain := c.getDomainAndEntry(ch)
 	klog.V(6).Infof("present for entry=%s, domain=%s", entry, domain)
 
+	// create dns resource manager
+	dnsOp, apiZone, err := c.getSacloudDNSOpAndZone(ch)
+	if err != nil {
+		return err
+	}
+
 	// execute search
-	searched, err := c.findTargetDNS(ch, domain)
+	searched, err := c.findTargetDNS(dnsOp, apiZone, ch, domain)
 	if err != nil {
 		return fmt.Errorf("unable to sacloud api: %v", err)
 	}
@@ -139,7 +141,7 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 		}
 
 		// 更新リクエスト
-		dns, err = c.dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
+		dns, err = dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
 			Records: dns.Records,
 		})
 		if err != nil {
@@ -162,8 +164,14 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 	entry, domain := c.getDomainAndEntry(ch)
 	klog.V(6).Infof("present for entry=%s, domain=%s", entry, domain)
 
+	// create dns resource manager
+	dnsOp, apiZone, err := c.getSacloudDNSOpAndZone(ch)
+	if err != nil {
+		return err
+	}
+
 	// execute search
-	searched, err := c.findTargetDNS(ch, domain)
+	searched, err := c.findTargetDNS(dnsOp, apiZone, ch, domain)
 	if err != nil {
 		return fmt.Errorf("unable to sacloud api: %v", err)
 	}
@@ -179,7 +187,7 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 		}
 
 		// 更新リクエスト
-		dns, err = c.dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
+		dns, err = dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
 			Records: records,
 		})
 		if err != nil {
@@ -234,49 +242,39 @@ func (c *customDNSProviderSolver) getDomainAndEntry(ch *v1alpha1.ChallengeReques
 	return entry, domain
 }
 
-func (c *customDNSProviderSolver) getSacloudDNSOp(ch *v1alpha1.ChallengeRequest) (*sacloud.DNSOp, error) {
-	if c.dnsOp == nil {
-		cfg, err := loadConfig(ch.Config)
-		if err != nil {
-			return nil, fmt.Errorf("unable to load config: %v", err)
-		}
-		klog.V(9).Infof("Decoded configuration %v", cfg)
-		apiToken, apiSecret, apiZone, err := c.getAccountInfo(&cfg, ch.ResourceNamespace)
-		if err != nil {
-			return nil, fmt.Errorf("unable to get API Account Info: %v", err)
-		}
-		c.apiZone = apiZone
-
-		// create client
-		caller := &sacloud.Client{
-			AccessToken:       *apiToken,
-			AccessTokenSecret: *apiSecret,
-			UserAgent:         "sacloud/cert-manager",
-			RetryMax:          sacloud.APIDefaultRetryMax,
-			RetryWaitMin:      sacloud.APIDefaultRetryWaitMin,
-			RetryWaitMax:      sacloud.APIDefaultRetryWaitMax,
-		}
-
-		// create dns resource manager
-		dnsOp := sacloud.NewDNSOp(caller)
-		c.dnsOp = dnsOp.(*sacloud.DNSOp)
+func (c *customDNSProviderSolver) getSacloudDNSOpAndZone(ch *v1alpha1.ChallengeRequest) (*sacloud.DNSOp, *string, error) {
+	cfg, err := loadConfig(ch.Config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to load config: %v", err)
+	}
+	klog.V(9).Infof("Decoded configuration %v", cfg)
+	apiToken, apiSecret, apiZone, err := c.getAccountInfo(&cfg, ch.ResourceNamespace)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to get API Account Info: %v", err)
 	}
 
-	return c.dnsOp, nil
+	// create client
+	caller := &sacloud.Client{
+		AccessToken:       *apiToken,
+		AccessTokenSecret: *apiSecret,
+		UserAgent:         "sacloud/cert-manager",
+		RetryMax:          sacloud.APIDefaultRetryMax,
+		RetryWaitMin:      sacloud.APIDefaultRetryWaitMin,
+		RetryWaitMax:      sacloud.APIDefaultRetryWaitMax,
+	}
+
+	// create dns resource manager
+	dnsOp := sacloud.NewDNSOp(caller).(*sacloud.DNSOp)
+
+	return dnsOp, apiZone, nil
 }
 
-func (c *customDNSProviderSolver) findTargetDNS(ch *v1alpha1.ChallengeRequest, domain string) (*sacloud.DNSFindResult, error) {
-	// create dns resource manager
-	dnsOp, err := c.getSacloudDNSOp(ch)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *customDNSProviderSolver) findTargetDNS(dnsOp *sacloud.DNSOp, apiZone *string, ch *v1alpha1.ChallengeRequest, domain string) (*sacloud.DNSFindResult, error) {
 	// create search condition
 	condition := &sacloud.FindCondition{
 		Filter: search.Filter{
 			search.Key("Name"):      search.AndEqual(domain),
-			search.Key("Zone.Name"): search.AndEqual(*c.apiZone),
+			search.Key("Zone.Name"): search.AndEqual(*apiZone),
 		},
 	}
 

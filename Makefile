@@ -1,5 +1,5 @@
 IMAGE_NAME := "snmagn/sacloud-dns-webhook"
-IMAGE_TAG := "latest"
+IMAGE_TAG := "dirty"
 TEST_ZONE_NAME := "example.com."
 PLATFORM := linux/amd64
 SACLOUD_API_TOKEN := api-token
@@ -31,10 +31,10 @@ help:
 	@echo "    example: make clean or make clean CLEAN_WITH_IMAGE=true"
 	@echo "  make push:"
 	@echo "    description: push docker image with build image"
-	@echo "    example: make push PLATFORM=linux/amd64,linux/arm64"
+	@echo "    example: make push IMAGE_TAG=dirty PLATFORM=linux/amd64,linux/arm64"
 	@echo "  make build:"
 	@echo "    description: build docker image"
-	@echo "    example: make build"
+	@echo "    example: make build IMAGE_TAG=dirty"
 	@echo "  make test:"
 	@echo "    description: test after build docker image"
 	@echo "    example: make test TEST_ZONE_NAME=example.net."
@@ -60,9 +60,7 @@ push:
 	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
 
 build:
-	DOCKER_BUILDKIT=1 docker buildx build \
-	       --load \
-	       --platform linux/amd64 \
+	DOCKER_BUILDKIT=1 docker image build \
 	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
 
 test: _testdata/my-custom-solver/api-key.yml
