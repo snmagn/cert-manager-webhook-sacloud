@@ -21,16 +21,17 @@ snmagn/sacloud-dns-webhook
 - helm v2 or v3
 
 ## for helm
-download
+add repogitory
 ```
-$ git clone https://github.com/snmagn/cert-manager-webhook-sacloud.git
-$ cd cert-manager-webhook-sacloud
+$ helm repo add cert-manager-webhook-sacloud https://snmagn.github.io/cert-manager-webhook-sacloud/
+$ helm repo update
 ```
 
 helm2
 ```
-$ helm install cert-manager-webhook-sacloud \
-       deploy/sacloud-webhook \
+$ helm install \
+       --name cert-manager-webhook-sacloud \
+       cert-manager-webhook-sacloud/sacloud-webhook \
        --namespace cert-manager \
        --set logLevel=2 \
        --set image.repository="snmagn/sacloud-dns-webhook" \
@@ -41,8 +42,9 @@ or
 
 helm3
 ```
-$ helm install cert-manager-webhook-sacloud \
-       deploy/sacloud-webhook \
+$ helm install \
+       cert-manager-webhook-sacloud \
+       cert-manager-webhook-sacloud/sacloud-webhook \
        --namespace cert-manager \
        --set logLevel=2 \
        --set image.repository="snmagn/sacloud-dns-webhook" \

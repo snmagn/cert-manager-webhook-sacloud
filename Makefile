@@ -8,6 +8,8 @@ SACLOUD_API_ZONE := api-zone
 CLEAN_WITH_IMAGE :=
 HELM_NAMESPACE := cert-manager
 HELM_LOGLEVEL := 2
+HELM_REPOSITORY_OUT := $(shell pwd)/docs
+HELM_REPOSITORY_URL := https://snmagn.github.io/cert-manager-webhook-sacloud/
 
 OUT := $(shell pwd)/_out
 
@@ -42,6 +44,9 @@ help:
 	@echo "  make rendered-manifest.yaml:"
 	@echo "    description: generate helm chart"
 	@echo "    example: make rendered-manifest.yaml HELM_NAMESPACE=example-namespace HELM_LOGLEVEL=2"
+	@echo "  make helm-repository:"
+	@echo "    description: update helm repository"
+	@echo "    example: make helm-repository HELM_REPOSITORY_URL=https://repo.example.com"
 
 clean:
 	rm -rf _out testdata/my-custom-solver/api-key.yml
@@ -87,3 +92,11 @@ rendered-manifest.yaml:
 	     --set image.repository=$(IMAGE_NAME) \
 	     --set image.tag=$(IMAGE_TAG) \
 	     > "$(OUT)/rendered-manifest.yaml"
+
+helm-repository:
+	helm package \
+	     deploy/sacloud-webhook \
+	     -d $(HELM_REPOSITORY_OUT)
+	helm repo index \
+	     $(HELM_REPOSITORY_OUT) \
+	     --url $(HELM_REPOSITORY_URL)
