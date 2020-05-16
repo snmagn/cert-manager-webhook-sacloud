@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sacloud-api-secret
+type: Opaque
+stringData:
+  token: SACLOUD_API_TOKEN
+  secret: SACLOUD_API_SECRET
+  zone: SACLOUD_API_ZONE

@@ -1,54 +1,193 @@
-# ACME webhook example
+# ACME webhook の非公式さくらクラウドDNS実装
+このリポジトリはACME webhook の非公式さくらクラウドDNS実装です。
+fork元のソースの通りApache-2.0ライセンスで公開しています。
+ご利用に関しては自己責任でお願いします。
 
-The ACME issuer type supports an optional 'webhook' solver, which can be used
-to implement custom DNS01 challenge solving logic.
+テストツールの実装は[cert-manager-webhook-dnsmadeeasy](https://github.com/angelnu/cert-manager-webhook-dnsmadeeasy)を、
+webhook本体の実装は[cert-manager-webhook-gandi](https://github.com/bwolf/cert-manager-webhook-gandi)、[sacloud
+/cert-manager](https://github.com/sacloud/cert-manager)、[sacloud package · go.dev](https://pkg.go.dev/github.com/sacloud/libsacloud/v2/sacloud?tab=doc)を参考にしています。
+各作者様に感謝を！
 
-This is useful if you need to use cert-manager with a DNS provider that is not
-officially supported in cert-manager core.
-
-## Why not in core?
-
-As the project & adoption has grown, there has been an influx of DNS provider
-pull requests to our core codebase. As this number has grown, the test matrix
-has become un-maintainable and so, it's not possible for us to certify that
-providers work to a sufficient level.
-
-By creating this 'interface' between cert-manager and DNS providers, we allow
-users to quickly iterate and test out new integrations, and then packaging
-those up themselves as 'extensions' to cert-manager.
-
-We can also then provide a standardised 'testing framework', or set of
-conformance tests, which allow us to validate the a DNS provider works as
-expected.
-
-## Creating your own webhook
-
-Webhook's themselves are deployed as Kubernetes API services, in order to allow
-administrators to restrict access to webhooks with Kubernetes RBAC.
-
-This is important, as otherwise it'd be possible for anyone with access to your
-webhook to complete ACME challenge validations and obtain certificates.
-
-To make the set up of these webhook's easier, we provide a template repository
-that can be used to get started quickly.
-
-### Creating your own repository
-
-### Running the test suite
-
-All DNS providers **must** run the DNS01 provider conformance testing suite,
-else they will have undetermined behaviour when used with cert-manager.
-
-**It is essential that you configure and run the test suite when creating a
-DNS01 webhook.**
-
-An example Go test file has been provided in [main_test.go]().
-
-You can run the test suite with:
-
-```bash
-$ TEST_ZONE_NAME=example.com go test .
+# Image
+Ready made images are hosted on Docker Hub ([image tags](https://hub.docker.com/r/snmagn/sacloud-dns-webhook)). Use at your own risk:
+```
+snmagn/sacloud-dns-webhook
 ```
 
-The example file has a number of areas you must fill in and replace with your
-own options in order for tests to pass.
+# Install
+## requirements
+- Kubernetes 1.18+
+- cert-manager 0.13+(動作確認をしたのは0.16です。もしかすると何か問題があるかも...)
+- helm v2 or v3
+
+## for helm
+download
+```
+$ git clone https://github.com/snmagn/cert-manager-webhook-sacloud.git
+$ cd cert-manager-webhook-sacloud
+```
+
+helm2
+```
+$ helm install cert-manager-webhook-sacloud \
+       deploy/sacloud-webhook \
+       --namespace cert-manager \
+       --set logLevel=2 \
+       --set image.repository="snmagn/sacloud-dns-webhook" \
+       --set image.tag="latest"
+```
+
+or
+
+helm3
+```
+$ helm install cert-manager-webhook-sacloud \
+       deploy/sacloud-webhook \
+       --namespace cert-manager \
+       --set logLevel=2 \
+       --set image.repository="snmagn/sacloud-dns-webhook" \
+       --set image.tag="latest"
+```
+
+# Test
+1.以下のテスト定義をコピーし、ご自分のAPIトークン情報に置き換えてください。
+
+test-certificate.yaml
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sacloud-api-secret
+  namespace: cert-manager
+type: Opaque
+data:
+  token: BASE64_ENCODED_TOKEN
+  secret: BASE64_ENCODED_SECRET
+  zone: BASE64_ENCODED_ZONE
+
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: ClusterIssuer
+metadata:
+  name: example-issuer
+  namespace: cert-manager
+spec:
+  acme:
+    email: hogehoge@example.com
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: example-issuer-account-key
+    solvers:
+    - dns01:
+        webhook:
+          groupName: snmagn.github.com
+          solverName: sacloud
+          config:
+            apiAccessTokenRef:
+              name: sacloud-api-secret
+              key: token
+            apiAccessSecretRef:
+              name: sacloud-api-secret
+              key: secret
+            apiZoneRef:
+              name: sacloud-api-secret
+              key: zone
+
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+ name: example-tls
+ namespace: default
+spec:
+  secretName: example-tls
+  commonName: '*.example.com'
+  dnsNames:
+    - '*.example.com'
+  issuerRef:
+    name: example-issuer
+    kind: ClusterIssuer
+```
+
+2.次のコマンドを実行します。
+```
+kubectl apply -f test-certificate.yaml
+```
+
+3.次のコマンドを実行します。
+```
+kubectl describe certificate
+```
+次の様な表示がなされ、末尾に「Certificate issued successfully」が表示されていればテストは成功です。
+DNS01のチャレンジ状況によって「Created new CertificateRequest resource "example-tls-XXXXXXXXX"」の表示だけが表示される場合があります。
+その場合は、しばらく経ってから再度「kubectl describe certificate」を実行してください。
+```
+Name:         example-tls
+Namespace:    default
+Labels:       <none>
+Annotations:  API Version:  cert-manager.io/v1alpha3
+Kind:         Certificate
+Metadata:
+  Creation Timestamp:  2020-05-10T05:56:09Z
+  Generation:          1
+  Managed Fields:
+    API Version:  cert-manager.io/v1alpha2
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+      f:spec:
+        .:
+        f:commonName:
+        f:dnsNames:
+        f:issuerRef:
+          .:
+          f:kind:
+          f:name:
+        f:secretName:
+    Manager:      kubectl
+    Operation:    Update
+    Time:         2020-05-10T05:56:09Z
+    API Version:  cert-manager.io/v1alpha2
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:status:
+        .:
+        f:conditions:
+        f:notAfter:
+    Manager:         controller
+    Operation:       Update
+    Time:            2020-05-10T05:58:20Z
+  Resource Version:  XXXXXX
+  Self Link:         /apis/cert-manager.io/v1alpha3/namespaces/default/certificates/example-tls
+  UID:               AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
+Spec:
+  Common Name:  *.example.com
+  Dns Names:
+    *.example.com
+  Issuer Ref:
+    Kind:       ClusterIssuer
+    Name:       example-issuer
+  Secret Name:  example-tls
+Status:
+  Conditions:
+    Last Transition Time:  2020-05-10T05:58:20Z
+    Message:               Certificate is up to date and has not expired
+    Reason:                Ready
+    Status:                True
+    Type:                  Ready
+  Not After:               2020-08-08T04:58:19Z
+Events:
+  Type    Reason     Age    From          Message
+  ----    ------     ----   ----          -------
+  Normal  Requested  6m18s  cert-manager  Created new CertificateRequest resource "example-tls-XXXXXXXXX"
+  Normal  Issued     4m7s   cert-manager  Certificate issued successfully
+```
+
+# ご利用にあたって
+cert-managerのDNS01のwebhookプロバイダを使用する場合は以下のページが参考になります。
+上記のテスト定義と合わせてご自分の環境に合わせた定義を作成するのに役立ててください。
+- [Configuring DNS01 Challenge Provider](https://cert-manager.io/next-docs/configuration/acme/dns01/)
+- [Webhook](https://cert-manager.io/next-docs/configuration/acme/dns01/webhook/)

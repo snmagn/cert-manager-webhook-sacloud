@@ -1,1 +1,14 @@
-{}
+{
+  "apiAccessTokenRef": {
+    "name": "sacloud-api-secret",
+    "key": "token"
+  },
+  "apiAccessSecretRef": {
+    "name": "sacloud-api-secret",
+    "key": "secret"
+  },
+  "apiZoneRef": {
+    "name": "sacloud-api-secret",
+    "key": "zone"
+  }
+}

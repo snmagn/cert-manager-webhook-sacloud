@@ -1,16 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	extapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	//"k8s.io/client-go/kubernetes"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/apis/acme/v1alpha1"
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/cmd"
+	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+
+	"github.com/sacloud/libsacloud/v2/sacloud"
+	"github.com/sacloud/libsacloud/v2/sacloud/search"
 )
 
 var GroupName = os.Getenv("GROUP_NAME")
@@ -41,7 +49,11 @@ type customDNSProviderSolver struct {
 	// 3. uncomment the relevant code in the Initialize method below
 	// 4. ensure your webhook's service account has the required RBAC role
 	//    assigned to it for interacting with the Kubernetes APIs you need.
-	//client kubernetes.Clientset
+	client *kubernetes.Clientset
+
+	// sacloud api
+	dnsOp   *sacloud.DNSOp
+	apiZone *string
 }
 
 // customDNSProviderConfig is a structure that is used to decode into when
@@ -64,8 +76,9 @@ type customDNSProviderConfig struct {
 	// These fields will be set by users in the
 	// `issuer.spec.acme.dns01.providers.webhook.config` field.
 
-	//Email           string `json:"email"`
-	//APIKeySecretRef v1alpha1.SecretKeySelector `json:"apiKeySecretRef"`
+	APIAccessTokenRef  cmmeta.SecretKeySelector `json:"apiAccessTokenRef"`
+	APIAccessSecretRef cmmeta.SecretKeySelector `json:"apiAccessSecretRef"`
+	APIZoneRef         cmmeta.SecretKeySelector `json:"apiZoneRef"`
 }
 
 // Name is used as the name for this DNS solver when referencing it on the ACME
@@ -75,7 +88,7 @@ type customDNSProviderConfig struct {
 // within a single webhook deployment**.
 // For example, `cloudflare` may be used as the name of a solver.
 func (c *customDNSProviderSolver) Name() string {
-	return "my-custom-solver"
+	return "sacloud"
 }
 
 // Present is responsible for actually presenting the DNS record with the
@@ -84,15 +97,58 @@ func (c *customDNSProviderSolver) Name() string {
 // cert-manager itself will later perform a self check to ensure that the
 // solver has correctly configured the DNS provider.
 func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
-	cfg, err := loadConfig(ch.Config)
+	klog.V(6).Infof("call function Present: namespace=%s, zone=%s, fqdn=%s",
+		ch.ResourceNamespace, ch.ResolvedZone, ch.ResolvedFQDN)
+
+	entry, domain := c.getDomainAndEntry(ch)
+	klog.V(6).Infof("present for entry=%s, domain=%s", entry, domain)
+
+	// execute search
+	searched, err := c.findTargetDNS(ch, domain)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to sacloud api: %v", err)
 	}
 
-	// TODO: do something more useful with the decoded configuration
-	fmt.Printf("Decoded configuration %v", cfg)
+	if searched.Total == 1 {
+		var dns = searched.DNS[0]
 
-	// TODO: add code that sets a record in the DNS provider's console
+		var targetTxtRecord *sacloud.DNSRecord
+		for _, record := range dns.Records {
+			if record.Name == entry && record.Type == "TXT" {
+				if record.RData == ch.Key {
+					// 既に同様のキーでDNS01チャレンジ用のTXTレコードが作成されている場合は処理をスキップする
+					return nil
+				}
+				targetTxtRecord = record
+			}
+		}
+
+		if targetTxtRecord != nil {
+			// TXTレコード更新
+			klog.V(6).Infof("Update TXT Record")
+			targetTxtRecord.RData = ch.Key
+		} else {
+			// TXTレコード追加
+			klog.V(6).Infof("Append TXT Record")
+			dns.Records = append(dns.Records, &sacloud.DNSRecord{
+				Type:  "TXT",
+				Name:  entry,
+				RData: ch.Key,
+				TTL:   60,
+			})
+		}
+
+		// 更新リクエスト
+		dns, err = c.dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
+			Records: dns.Records,
+		})
+		if err != nil {
+			return fmt.Errorf("update failed!unable to sacloud api: %v", err)
+		}
+	} else {
+		return fmt.Errorf("uninitialized zone: %s, error: %v", domain, nil)
+	}
+
 	return nil
 }
 
@@ -103,7 +159,36 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 // This is in order to facilitate multiple DNS validations for the same domain
 // concurrently.
 func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
-	// TODO: add code that deletes a record from the DNS provider's console
+	entry, domain := c.getDomainAndEntry(ch)
+	klog.V(6).Infof("present for entry=%s, domain=%s", entry, domain)
+
+	// execute search
+	searched, err := c.findTargetDNS(ch, domain)
+	if err != nil {
+		return fmt.Errorf("unable to sacloud api: %v", err)
+	}
+
+	if searched.Total == 1 {
+		var dns = searched.DNS[0]
+
+		var records []*sacloud.DNSRecord
+		for _, record := range dns.Records {
+			if record.Type != "TXT" || record.RData != ch.Key {
+				records = append(records, record)
+			}
+		}
+
+		// 更新リクエスト
+		dns, err = c.dnsOp.UpdateSettings(context.Background(), dns.ID, &sacloud.DNSUpdateSettingsRequest{
+			Records: records,
+		})
+		if err != nil {
+			return fmt.Errorf("cleanup failed!unable to sacloud api: %v", err)
+		}
+	} else {
+		return fmt.Errorf("uninitialized zone: %s, error: %v", domain, nil)
+	}
+
 	return nil
 }
 
@@ -117,17 +202,12 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 // The stopCh can be used to handle early termination of the webhook, in cases
 // where a SIGTERM or similar signal is sent to the webhook process.
 func (c *customDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
-	///// UNCOMMENT THE BELOW CODE TO MAKE A KUBERNETES CLIENTSET AVAILABLE TO
-	///// YOUR CUSTOM DNS PROVIDER
-
-	//cl, err := kubernetes.NewForConfig(kubeClientConfig)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//c.client = cl
-
-	///// END OF CODE TO MAKE KUBERNETES CLIENTSET AVAILABLE
+	klog.V(6).Infof("call function Initialize")
+	cl, err := kubernetes.NewForConfig(kubeClientConfig)
+	if err != nil {
+		return err
+	}
+	c.client = cl
 	return nil
 }
 
@@ -144,4 +224,108 @@ func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func (c *customDNSProviderSolver) getDomainAndEntry(ch *v1alpha1.ChallengeRequest) (string, string) {
+	// Both ch.ResolvedZone and ch.ResolvedFQDN end with a dot: '.'
+	entry := strings.TrimSuffix(ch.ResolvedFQDN, ch.ResolvedZone)
+	entry = strings.TrimSuffix(entry, ".")
+	domain := strings.TrimSuffix(ch.ResolvedZone, ".")
+	return entry, domain
+}
+
+func (c *customDNSProviderSolver) getSacloudDNSOp(ch *v1alpha1.ChallengeRequest) (*sacloud.DNSOp, error) {
+	if c.dnsOp == nil {
+		cfg, err := loadConfig(ch.Config)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load config: %v", err)
+		}
+		klog.V(9).Infof("Decoded configuration %v", cfg)
+		apiToken, apiSecret, apiZone, err := c.getAccountInfo(&cfg, ch.ResourceNamespace)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get API Account Info: %v", err)
+		}
+		c.apiZone = apiZone
+
+		// create client
+		caller := &sacloud.Client{
+			AccessToken:       *apiToken,
+			AccessTokenSecret: *apiSecret,
+			UserAgent:         "sacloud/cert-manager",
+			RetryMax:          sacloud.APIDefaultRetryMax,
+			RetryWaitMin:      sacloud.APIDefaultRetryWaitMin,
+			RetryWaitMax:      sacloud.APIDefaultRetryWaitMax,
+		}
+
+		// create dns resource manager
+		dnsOp := sacloud.NewDNSOp(caller)
+		c.dnsOp = dnsOp.(*sacloud.DNSOp)
+	}
+
+	return c.dnsOp, nil
+}
+
+func (c *customDNSProviderSolver) findTargetDNS(ch *v1alpha1.ChallengeRequest, domain string) (*sacloud.DNSFindResult, error) {
+	// create dns resource manager
+	dnsOp, err := c.getSacloudDNSOp(ch)
+	if err != nil {
+		return nil, err
+	}
+
+	// create search condition
+	condition := &sacloud.FindCondition{
+		Filter: search.Filter{
+			search.Key("Name"):      search.AndEqual(domain),
+			search.Key("Zone.Name"): search.AndEqual(*c.apiZone),
+		},
+	}
+
+	// execute search
+	return dnsOp.Find(context.Background(), condition)
+}
+
+func (c *customDNSProviderSolver) getAccountInfo(cfg *customDNSProviderConfig, namespace string) (*string, *string, *string, error) {
+	// apiToken
+	secretName := cfg.APIAccessTokenRef.LocalObjectReference.Name
+	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIAccessTokenRef.Key)
+	sec, err := c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
+	}
+	secBytes, ok := sec.Data[cfg.APIAccessTokenRef.Key]
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("key %q not found in secret \"%s/%s\"", cfg.APIAccessTokenRef.Key,
+			cfg.APIAccessTokenRef.LocalObjectReference.Name, namespace)
+	}
+	apiToken := string(secBytes)
+
+	// apiAccessSecret
+	secretName = cfg.APIAccessSecretRef.LocalObjectReference.Name
+	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIAccessSecretRef.Key)
+	sec, err = c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
+	}
+	secBytes, ok = sec.Data[cfg.APIAccessSecretRef.Key]
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("key %q not found in secret \"%s/%s\"", cfg.APIAccessSecretRef.Key,
+			cfg.APIAccessSecretRef.LocalObjectReference.Name, namespace)
+	}
+	apiSecret := string(secBytes)
+
+	// apiZone
+	secretName = cfg.APIZoneRef.LocalObjectReference.Name
+	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIZoneRef.Key)
+	sec, err = c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
+	}
+	secBytes, ok = sec.Data[cfg.APIZoneRef.Key]
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("key %q not found in secret \"%s/%s\"", cfg.APIZoneRef.Key,
+			cfg.APIZoneRef.LocalObjectReference.Name, namespace)
+	}
+	apiZone := string(secBytes)
+
+	return &apiToken, &apiSecret, &apiZone, nil
 }

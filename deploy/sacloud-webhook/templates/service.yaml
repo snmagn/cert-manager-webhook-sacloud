@@ -1,10 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "example-webhook.fullname" . }}
+  name: {{ include "sacloud-webhook.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ include "example-webhook.name" . }}
-    chart: {{ include "example-webhook.chart" . }}
+    app: {{ include "sacloud-webhook.name" . }}
+    chart: {{ include "sacloud-webhook.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 spec:
@@ -15,5 +16,5 @@ spec:
       protocol: TCP
       name: https
   selector:
-    app: {{ include "example-webhook.name" . }}
+    app: {{ include "sacloud-webhook.name" . }}
     release: {{ .Release.Name }}
