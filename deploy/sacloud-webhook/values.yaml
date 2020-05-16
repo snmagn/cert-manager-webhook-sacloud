@@ -6,14 +6,16 @@
 # solve the DNS01 challenge.
 # This group name should be **unique**, hence using your own company's domain
 # here is recommended.
-groupName: acme.mycompany.com
+groupName: snmagn.github.com
+
+logLevel: 2
 
 certManager:
   namespace: cert-manager
   serviceAccountName: cert-manager
 
 image:
-  repository: mycompany/webhook-image
+  repository: snmagn/sacloud-dns-webhook
   tag: latest
   pullPolicy: IfNotPresent
 
