@@ -1,0 +1,30 @@
+name: Add tag from branch name
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  add-tag:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.head.ref, '/')
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Get version
+        run: echo "::set-env name=TAG_NAME::${HEAD_REF##*/}"
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.ACCESS_TOKEN }}
+          script: |
+            github.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${process.env.TAG_NAME}`,
+              sha: context.sha
+            })
