@@ -2,8 +2,7 @@ name: Add tag from branch name
 
 on:
   pull_request:
-    types:
-      - closed
+    types: [closed]
 
 jobs:
   add-tag:
@@ -20,7 +19,7 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
       - uses: actions/github-script@v3
         with:
-          github-token: ${{ secrets.ACCESS_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             github.git.createRef({
               owner: context.repo.owner,

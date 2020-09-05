@@ -1,10 +1,12 @@
 IMAGE_NAME := "snmagn/sacloud-dns-webhook"
 IMAGE_TAG := "dirty"
-TEST_ZONE_NAME := "example.com."
 PLATFORM := linux/amd64
+GO_VERSION := 1.13
+PACKAGE :=
 SACLOUD_API_TOKEN := api-token
 SACLOUD_API_SECRET := api-secret
 SACLOUD_API_ZONE := api-zone
+TEST_ZONE_NAME := "example.com."
 CLEAN_WITH_IMAGE :=
 HELM_NAMESPACE := cert-manager
 HELM_LOGLEVEL := 2
@@ -41,6 +43,9 @@ help:
 	@echo "  make verify:"
 	@echo "    description: test for golang"
 	@echo "    example: make verify TEST_ZONE_NAME=example.net."
+	@echo "  make generate-api-key:"
+	@echo "    description: generate api-key.yml"
+	@echo "    example: make generate-api-key SACLOUD_API_TOKEN=api-token SACLOUD_API_SECRET=api-secret SACLOUD_API_ZONE=api-zone"
 	@echo "  make rendered-manifest.yaml:"
 	@echo "    description: generate helm chart"
 	@echo "    example: make rendered-manifest.yaml HELM_NAMESPACE=example-namespace HELM_LOGLEVEL=2"
@@ -64,8 +69,7 @@ build:
 	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
 
 test: _testdata/my-custom-solver/api-key.yml
-	DOCKER_BUILDKIT=1 docker buildx build \
-	       --platform linux/amd64 \
+	DOCKER_BUILDKIT=1 docker image build \
 	       --secret id=api-key,src=./testdata/my-custom-solver/api-key.yml \
 	       --build-arg SKIP_VERIFY=false \
 	       --build-arg TEST_ZONE_NAME=$(TEST_ZONE_NAME) \
