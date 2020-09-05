@@ -57,13 +57,29 @@ clean:
 	rm -rf _out testdata/my-custom-solver/api-key.yml
 	test "$(CLEAN_WITH_IMAGE)" = "" || docker image rm -f "$(IMAGE_NAME):$(IMAGE_TAG)"
 
-push:
+local-push:
 	#docker image push "$(IMAGE_NAME):$(IMAGE_TAG)"
 	DOCKER_BUILDKIT=1 docker buildx build \
 	       --push \
 	       --platform $(PLATFORM) \
 	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
+	DOCKER_BUILDKIT=1 docker buildx build \
+	       --push \
+	       --platform $(PLATFORM) \
+	       -t "$(IMAGE_NAME):latest" .
 
+push:
+	DOCKER_BUILDKIT=1 docker buildx build \
+	       --cache-from "type=local,src=/tmp/.buildx-cache" \
+	       --cache-to "type=local,dest=/tmp/.buildx-cache" \
+	       --push \
+	       --platform $(PLATFORM) \
+	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
+	DOCKER_BUILDKIT=1 docker buildx build \
+	       --cache-from "type=local,src=/tmp/.buildx-cache" \
+	       --push \
+	       --platform $(PLATFORM) \
+	       -t "$(IMAGE_NAME):latest" .
 build:
 	DOCKER_BUILDKIT=1 docker image build \
 	       -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
