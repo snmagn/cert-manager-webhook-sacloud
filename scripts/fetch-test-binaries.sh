@@ -17,6 +17,10 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
   goos="darwin"
 fi
 
+if [[ "$1" != "" ]]; then
+  k8s_version=$1
+fi
+
 if [[ "$goos" == "unknown" ]]; then
   echo "OS '$OSTYPE' not supported. Aborting." >&2
   exit 1

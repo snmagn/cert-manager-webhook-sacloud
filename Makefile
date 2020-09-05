@@ -2,6 +2,7 @@ IMAGE_NAME := "snmagn/sacloud-dns-webhook"
 IMAGE_TAG := "dirty"
 PLATFORM := linux/amd64
 GO_VERSION := 1.13
+K8S_VERSION := 1.18.8
 PACKAGE :=
 SACLOUD_API_TOKEN := api-token
 SACLOUD_API_SECRET := api-secret
@@ -21,7 +22,7 @@ $(shell mkdir -p "$(OUT)")
 
 fetch-test-binaries: _out/kubebuilder/bin/kube-apiserver
 _out/kubebuilder/bin/kube-apiserver:
-	./scripts/fetch-test-binaries.sh
+	./scripts/fetch-test-binaries.sh $(K8S_VERSION)
 
 _testdata/my-custom-solver/api-key.yml:
 	test -f testdata/my-custom-solver/api-key.yml || (echo "please execute: make generate-api-key SACLOUD_API_TOKEN=api-token SACLOUD_API_SECRET=api-secret SACLOUD_API_ZONE=api-zone" && exit 1)

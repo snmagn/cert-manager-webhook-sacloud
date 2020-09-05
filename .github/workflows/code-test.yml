@@ -12,7 +12,8 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
           go-version: '1.13.*' # The Go version to download (if necessary) and use.
@@ -25,17 +26,16 @@ jobs:
     name: post-test
     needs: code-test
     runs-on: ubuntu-latest
-    if: ${{ failure() }} == false && contains(github.event.pull_request.head.ref, '/')
+    if: ${{ failure() }} == false && (startsWith(github.event.pull_request.head.ref, 'develop') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
     defaults:
       run:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Get version
-        run: echo "::set-env name=TAG_NAME::${HEAD_REF##*/}"
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: echo "::set-env name=TAG_NAME::$(cat VERSION))"
       - name: update helm chart
         run: make rendered-manifest.yaml IMAGE_TAG=${TAG_NAME}
       - name: update helm repo
@@ -67,11 +67,9 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
-      - name: Get version
-        run: echo "::set-env name=VERSION::${TAG_NAME%%-cert-manager-v*}"
       - name: Run Buildx
         run: |
-          make push PLATFORM=linux/amd64,linux/arm64 IMAGE_TAG=${VERSION}
+          make push PLATFORM=linux/amd64,linux/arm64 IMAGE_TAG=${TAG_NAME}
       - name: add label "automerge"
         uses: actions/github-script@v3
         with:

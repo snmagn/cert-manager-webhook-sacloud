@@ -3,4 +3,5 @@ update_configs:
   - package_manager: "go:modules"
     directory: "/"
     update_schedule: "daily"
+    target_branch: "develop"
     version_requirement_updates: "off"
