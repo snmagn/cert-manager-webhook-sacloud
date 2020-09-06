@@ -21,6 +21,7 @@ import (
 	"github.com/sacloud/libsacloud/v2/sacloud/search"
 )
 
+// GroupName api-resource group
 var GroupName = os.Getenv("GROUP_NAME")
 
 func main() {
@@ -286,7 +287,7 @@ func (c *customDNSProviderSolver) getAccountInfo(cfg *customDNSProviderConfig, n
 	// apiToken
 	secretName := cfg.APIAccessTokenRef.LocalObjectReference.Name
 	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIAccessTokenRef.Key)
-	sec, err := c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	sec, err := c.client.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
 	}
@@ -300,7 +301,7 @@ func (c *customDNSProviderSolver) getAccountInfo(cfg *customDNSProviderConfig, n
 	// apiAccessSecret
 	secretName = cfg.APIAccessSecretRef.LocalObjectReference.Name
 	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIAccessSecretRef.Key)
-	sec, err = c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	sec, err = c.client.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
 	}
@@ -314,7 +315,7 @@ func (c *customDNSProviderSolver) getAccountInfo(cfg *customDNSProviderConfig, n
 	// apiZone
 	secretName = cfg.APIZoneRef.LocalObjectReference.Name
 	klog.V(6).Infof("try to load secret `%s` with key `%s`", secretName, cfg.APIZoneRef.Key)
-	sec, err = c.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	sec, err = c.client.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("unable to get secret `%s`; %v", secretName, err)
 	}
