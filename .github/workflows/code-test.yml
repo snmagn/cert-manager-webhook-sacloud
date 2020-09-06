@@ -25,7 +25,7 @@ jobs:
   post-test-merge:
     name: post-test-merge
     needs: code-test
-    if: ${{ needs.code-test.result }} == 'success' && ((github.event.pull_request.base.ref == 'master' && (github.event.pull_request.head.ref == 'develop' || startsWith(github.event.pull_request.head.ref == 'hotfix/'))) || github.event.pull_request.base.ref == 'develop')
+    if: ${{ needs.code-test.result }} == ${{ 'success' }} && ((${{ github.event.pull_request.base.ref }} == ${{ 'master' }} && (${{ github.event.pull_request.head.ref }} == ${{ 'develop' }} || ${{ startsWith(github.event.pull_request.head.ref, 'hotfix/') }})) || ${{ github.event.pull_request.base.ref }} == ${{ 'develop' }})
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -73,7 +73,7 @@ jobs:
   post-test-tag-master:
     name: post-test-tag-master
     needs: post-test-merge
-    if: ${{ needs.post-test-merge.result }} == 'success' && github.event.pull_request.base.ref == 'master'
+    if: ${{ needs.post-test-merge.result }} == ${{ 'success' }} && ${{ github.event.pull_request.base.ref }} == ${{ 'master' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -133,7 +133,7 @@ jobs:
   post-test-tag-develop:
     name: post-test-tag-develop
     needs: post-test-merge
-    if: ${{ needs.post-test-merge.result }} == 'success' && github.event.pull_request.base.ref == 'develop'
+    if: ${{ needs.post-test-merge.result }} == ${{ 'success' }} && ${{ github.event.pull_request.base.ref }} == ${{ 'develop' }}
     runs-on: ubuntu-latest
     defaults:
       run:
