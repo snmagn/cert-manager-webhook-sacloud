@@ -9,7 +9,7 @@ on:
 jobs:
   add-tag:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && (startsWith(github.event.pull_request.head.ref, 'develop') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
+    if: github.event.pull_request.merged == true && (github.event.pull_request.head.ref == 'develop' || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
     defaults:
       run:
         shell: bash
@@ -19,8 +19,6 @@ jobs:
         uses: actions/checkout@v2
       - name: Get version
         run: echo "::set-env name=TAG_NAME::$(cat VERSION)"
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
       - uses: actions/github-script@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
