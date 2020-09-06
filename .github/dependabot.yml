@@ -3,6 +3,9 @@ updates:
 - package-ecosystem: gomod
   directory: "/"
   schedule:
-    interval: daily
+    interval: "daily"
+    time: "17:30"
+    # Use Japan Standard Time (UTC +09:00)
+    timezone: "Asia/Tokyo"
   open-pull-requests-limit: 10
-  target_branch: "develop"
+  target-branch: "develop"
