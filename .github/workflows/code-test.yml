@@ -25,13 +25,19 @@ jobs:
   post-test-merge:
     name: post-test-merge
     needs: code-test
-    if: ${{ success() }} && ((github.event.pull_request.base.ref == 'master' && (github.event.pull_request.head.ref == 'develop' || startsWith(github.event.pull_request.head.ref == 'hotfix/'))) || github.event.pull_request.base.ref == 'develop')
+    if: ${{ needs.code-test.result }} == 'success' && ((github.event.pull_request.base.ref == 'master' && (github.event.pull_request.head.ref == 'develop' || startsWith(github.event.pull_request.head.ref == 'hotfix/'))) || github.event.pull_request.base.ref == 'develop')
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
 
     steps:
+      - name: Job result[code-test]
+        run: echo ${{ needs.code-test.result }}
+      - name: Reference[github.event.pull_request.base.ref]
+        run: echo ${{ github.event.pull_request.base.ref }}
+      - name: Reference[github.event.pull_request.head.ref]
+        run: echo ${{ github.event.pull_request.head.ref }}
       - name: Checkout
         uses: actions/checkout@v2
       - name: Get version
@@ -67,17 +73,25 @@ jobs:
   post-test-tag-master:
     name: post-test-tag-master
     needs: post-test-merge
-    if: ${{ success() }} && github.event.pull_request.base.ref == 'master'
+    if: ${{ needs.post-test-merge.result }} == 'success' && github.event.pull_request.base.ref == 'master'
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
 
     steps:
+      - name: Job result[post-test-merge]
+        run: echo ${{ needs.post-test-merge.result }}
+      - name: Reference[github.event.pull_request.base.ref]
+        run: echo ${{ github.event.pull_request.base.ref }}
+      - name: Reference[github.event.pull_request.head.ref]
+        run: echo ${{ github.event.pull_request.head.ref }}
       - name: Checkout
         uses: actions/checkout@v2
+      - name: update merged ref
+        run: git -c protocol.version=2 fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 origin master && git checkout master && git pull --ff origin
       - name: Get version
-        run: echo "::set-env name=TAG_NAME::$(cat VERSION))"
+        run: echo "::set-env name=TAG_NAME::$(cat VERSION)"
       - name: Set up Docker Buildx
         id: buildx
         uses: crazy-max/ghaction-docker-buildx@v3
@@ -103,7 +117,7 @@ jobs:
         run: |
           make push PLATFORM=linux/amd64,linux/arm64 IMAGE_TAG=${TAG_NAME}
       - name: get merged master sha
-        run: echo "::set-env name=TARGET_SHA::$(git rev-parse master))"
+        run: echo "::set-env name=TARGET_SHA::$(git rev-parse master)"
       - name: add versin tag
         uses: actions/github-script@v3
         with:
@@ -119,17 +133,25 @@ jobs:
   post-test-tag-develop:
     name: post-test-tag-develop
     needs: post-test-merge
-    if: ${{ success() }} && github.event.pull_request.base.ref == 'develop'
+    if: ${{ needs.post-test-merge.result }} == 'success' && github.event.pull_request.base.ref == 'develop'
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
 
     steps:
+      - name: Job result[post-test-merge]
+        run: echo ${{ needs.post-test-merge.result }}
+      - name: Reference[github.event.pull_request.base.ref]
+        run: echo ${{ github.event.pull_request.base.ref }}
+      - name: Reference[github.event.pull_request.head.ref]
+        run: echo ${{ github.event.pull_request.head.ref }}
       - name: Checkout
         uses: actions/checkout@v2
+      - name: update merged ref
+        run: git -c protocol.version=2 fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 origin develop && git checkout develop
       - name: Get version
-        run: echo "::set-env name=TAG_NAME::$(echo \"$(cat VERSION)-dev-$(git rev-parse develop)\")"
+        run: echo "::set-env name=TAG_NAME::$(echo $(cat VERSION)-dev-$(git rev-parse develop))"
       - name: Set up Docker Buildx
         id: buildx
         uses: crazy-max/ghaction-docker-buildx@v3
