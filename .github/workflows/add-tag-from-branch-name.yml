@@ -1,4 +1,4 @@
-name: Add tag from branch name
+name: Add tag from 'VERSION' file
 
 on:
   pull_request:

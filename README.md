@@ -16,8 +16,8 @@ snmagn/sacloud-dns-webhook
 
 # Install
 ## requirements
-- Kubernetes 1.18+
-- cert-manager 0.13+(動作確認をしたのは0.16です。もしかすると何か問題があるかも...)
+- Kubernetes 1.16+(動作確認は1.18にて行いました。)
+- cert-manager 1.0.3+
 - helm v2 or v3
 
 ## for helm
