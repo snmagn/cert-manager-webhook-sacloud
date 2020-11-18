@@ -74,3 +74,4 @@ spec:
   - {{ include "sacloud-webhook.fullname" . }}
   - {{ include "sacloud-webhook.fullname" . }}.{{ .Release.Namespace }}
   - {{ include "sacloud-webhook.fullname" . }}.{{ .Release.Namespace }}.svc
+  - {{ include "sacloud-webhook.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
