@@ -237,8 +237,7 @@ func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
 
 func (c *customDNSProviderSolver) getDomainAndEntry(ch *v1alpha1.ChallengeRequest) (string, string) {
 	// Both ch.ResolvedZone and ch.ResolvedFQDN end with a dot: '.'
-	entry := strings.TrimSuffix(ch.ResolvedFQDN, ch.ResolvedZone)
-	entry = strings.TrimSuffix(entry, ".")
+	entry := ch.ResolvedFQDN[:strings.Index(ch.ResolvedFQDN, ".")]
 	domain := strings.TrimSuffix(ch.ResolvedZone, ".")
 	return entry, domain
 }
